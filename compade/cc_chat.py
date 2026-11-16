@@ -30,7 +30,7 @@ class CCTurn:
     @staticmethod
     def clean_text(text):
         text = CCTurn.normalize_text(text)
-        return re.sub(r"```compade-(?:plan|decision)\s*.*?```", "", text or "", flags=re.S).strip()
+        return re.sub(r"```compade-(?:plan|decision|questions)\s*.*?```", "", text or "", flags=re.S).strip()
 
     @staticmethod
     def normalize_text(value):
@@ -56,6 +56,8 @@ class CCTurn:
         if effort:
             cmd += ["--effort", effort]
         cmd += ["--permission-mode", mode]
+        # -p kipinde AskUserQuestion yanıt alamaz; şef sorularını compade-questions bloğuyla sorar
+        cmd += ["--disallowedTools", "AskUserQuestion"]
         for item in allowed or []:
             cmd += ["--allowedTools", item]
         if system_prompt:
@@ -63,7 +65,7 @@ class CCTurn:
         self.argv = cmd
         started = time.monotonic()
         msg_id, session, final_text, result_seen = None, session_id, "", False
-        tools, input_parts = {}, {}
+        tools, input_parts, emitted = {}, {}, set()   # emitted: akışta bildirilen araç id'leri (assistant iletisinde tekrar bildirme)
         try:
             self.proc = self._popen(cmd, cwd=str(cwd or "."), stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace")
@@ -120,6 +122,7 @@ class CCTurn:
                                 tools[idx]["input"] = json.loads(raw) if raw else tools[idx]["input"]
                             except ValueError:
                                 tools[idx]["input"] = raw
+                            emitted.add(tools[idx].get("id"))
                             emit({"type": "cc_tool", **tools[idx], "status": "running"})
                     elif event.get("type") == "message_stop" and final_text:
                         emit({"type": "cc_assistant_done", "msg": msg_id, "text": self.clean_text(final_text), "raw_text": final_text})
@@ -129,6 +132,9 @@ class CCTurn:
                     for block in msg.get("content", []):
                         if block.get("type") == "tool_use":
                             tools[block.get("id")] = block
+                            if block.get("id") in emitted:
+                                continue
+                            emitted.add(block.get("id"))
                             emit({"type": "cc_tool", "id": block.get("id"), "name": block.get("name"), "input": block.get("input", {}), "status": "running"})
                 elif typ == "user":
                     for block in (obj.get("message") or {}).get("content", []):

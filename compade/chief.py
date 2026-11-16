@@ -235,3 +235,50 @@ def parse_decision(text):
     if not isinstance(data, dict) or data.get("action") not in ("retry", "reassign", "ask_user", "abort", "continue"):
         return None
     return {"action": data["action"], "task": str(data.get("task") or ""), "role": str(data.get("role") or ""), "message": str(data.get("message") or "")}
+
+
+def _norm_questions(items):
+    """[{question, options[]}] — en çok 4 soru, soru başına en çok 6 kısa seçenek."""
+    out = []
+    for q in items if isinstance(items, list) else []:
+        if isinstance(q, str):
+            q = {"question": q}
+        if not isinstance(q, dict):
+            continue
+        text = str(q.get("question") or q.get("q") or "").strip()
+        if not text:
+            continue
+        opts = []
+        for o in q.get("options") or []:
+            label = o.get("label") if isinstance(o, dict) else o
+            label = str(label or "").strip()
+            if label and label not in opts:
+                opts.append(label[:120])
+        out.append({"question": text[:600], "options": opts[:6], "multi": bool(q.get("multi") or q.get("multiSelect"))})
+        if len(out) == 4:
+            break
+    return out
+
+
+def parse_questions(text):
+    """Şef yanıtındaki ```compade-questions [...]``` bloğu (dizi ya da {"questions":[...]})."""
+    matches = re.findall(r"```compade-questions\s*(\[.*?\]|\{.*?\})\s*```", text or "", re.S)
+    if not matches:
+        return None
+    try:
+        data = json.loads(matches[-1])
+    except (ValueError, TypeError):
+        return None
+    if isinstance(data, dict):
+        data = data.get("questions")
+    return _norm_questions(data) or None
+
+
+def questions_from_tool(tool_input):
+    """Claude'un AskUserQuestion aracı girdisi -> aynı biçim (araç -p kipinde yanıt alamaz; soruyu kullanıcıya biz sorarız)."""
+    if isinstance(tool_input, str):
+        try:
+            tool_input = json.loads(tool_input)
+        except ValueError:
+            return None
+    return _norm_questions((tool_input or {}).get("questions") if isinstance(tool_input, dict) else None) or None

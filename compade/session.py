@@ -27,6 +27,7 @@ class Chat:
         self.id = cid or time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
         self.messages = []            # {"who": "kullanıcı"|"şef", "text": str, "ts": float}
         self.plan = None              # son doğrulanmış plan
+        self.questions = None         # şefin yanıt bekleyen soruları [{question, options, multi}]
         self.state = "idle"           # idle | planning | awaiting | running | done
         self.phase = "plan"
         self.brief = ""
@@ -54,7 +55,7 @@ class Chat:
                 "phase": self.phase, "brief": self.brief, "ready": self.ready, "usage": {**self.usage, **self.cc_usage},
                 "cc_session_id": self.cc_session_id, "cc_mode": self.cc_mode, "updated": self.updated, "title": self.title,
                 "workspace": self.workspace.to_dict() if self.workspace else None, "changes": self.changes,
-                "applied": self.applied}
+                "applied": self.applied, "questions": self.questions}
 
 
 class Sessions:
@@ -73,7 +74,7 @@ class Sessions:
                     raw = json.loads(path.read_text(encoding="utf-8"))
                     chat = Chat(raw.get("id"))
                     for key in ("messages", "plan", "state", "tasks", "phase", "brief", "ready", "cc_session_id", "cc_mode", "updated", "title",
-                                "changes", "applied"):
+                                "changes", "applied", "questions"):
                         if key in raw:
                             setattr(chat, key, raw[key])
                     if raw.get("workspace"):
@@ -215,6 +216,7 @@ class Sessions:
                 chat.awaiting_user = False
                 chat._reply = text
                 chat.messages.append({"who": "kullanıcı", "text": text, "ts": time.time()})
+                chat.questions = None
                 chat.updated = time.time()
                 self._emit("chat_user", chat, text=text)
                 reply_ev.set()
@@ -224,6 +226,7 @@ class Sessions:
             if chat.awaiting_user:
                 chat.awaiting_user = False
                 chat.messages.append({"who": "kullanıcı", "text": text, "ts": time.time()})
+                chat.questions = None
                 chat.updated = time.time()
                 chat.state = "planning"
                 threading.Thread(target=self._cc_thread, args=(chat, key, "Kullanıcı yanıtı: " + text, cwd or chat.cwd, (), False), daemon=True).start()
@@ -236,6 +239,7 @@ class Sessions:
             chat.phase = "discuss" if discuss else "plan"
             chat.state, chat.cancelled = ("discussing" if discuss else "planning"), False
             chat.messages.append({"who": "kullanıcı", "text": text, "ts": time.time()})
+            chat.questions = None
             chat.updated = time.time()
         self._emit("chat_user", chat, text=text)
         if key and discuss:
@@ -475,7 +479,12 @@ class Sessions:
                 "ÖNEMLİ DAVRANIŞ: Kullanıcıyla sürekli sohbet halindesin. İlk mesajda ASLA hemen plan çıkarma: işi nasıl anladığını söyle, gerekirse 1-3 kısa soru sor, yaklaşım öner, kullanıcının fikrini al. Gerektiğinde projeyi salt okunur araçlarla incele. Plan bloğunu YALNIZ kullanıcı açıkça isterse ('planla', 'başlat', 'ekibe ver', 'tamam yap' gibi) ya da konuşmayla her şey netleştikten sonra 'Plan çıkarayım mı?' diye sorup onay alırsan ver. Plan istenince: yanıtın SONUNA tek ```compade-plan JSON bloğu ekle. Şema: "
                 '{"summary":"...","question":"","tasks":[{"id":"t1","role":"rol-anahtarı","instruction":"...","write":false,"depends_on":[],"difficulty":"easy|medium|hard"}]} . '
                 "difficulty dürüst olsun: model seçimi ona göre yapılır (kolay iş ucuz modele, zor iş güçlü modele). "
-                "Dosya düzenleme ve alt rol işlerini kendin yapma; yalnız planla.")
+                "Dosya düzenleme ve alt rol işlerini kendin yapma; yalnız planla. "
+                "SORU SORMA: kullanıcıdan cevap beklediğin her soruyu (netleştirme, seçim, onay) AskUserQuestion aracıyla DEĞİL, "
+                "yanıtının SONUNA tek ```compade-questions JSON bloğuyla sor; arayüz bunu cevaplanabilir soru kartı yapar. Şema: "
+                '[{"question":"...","options":["kısa seçenek","..."],"multi":false}] . '
+                "En çok 4 soru; options isteğe bağlı (2-4 kısa seçenek; kullanıcı kendi cevabını da yazabilir); multi=true birden çok seçime izin verir. "
+                "Soruları metinde ayrıca numaralı liste olarak tekrar etme; metinde yalnız bağlamı anlat.")
 
     def _cc_thread(self, chat, key, text, cwd, files, correction=False, sink=None):
         roles = self.engine.roles["roles"]
@@ -507,6 +516,12 @@ class Sessions:
                     pass
                 self._emit("usage", chat, usage={**chat.usage, **chat.cc_usage}, est_tokens=int(sum(chat.usage.values()) / 3.6))
             events.append((kind, dict(event)))
+            if kind == "cc_tool" and event.get("name") == "AskUserQuestion":
+                qs = chief.questions_from_tool(event.get("input"))
+                if qs:
+                    chat.questions = qs
+                    self._save(chat)
+                    self._emit("cc_questions", chat, questions=qs)
             if kind == "cc_tool":
                 chat.messages.append({"who": "araç", "name": event.get("name"), "input": json.dumps(event.get("input", {}), ensure_ascii=False)[:240], "ok": None, "ts": time.time()})
             elif kind == "cc_tool_result":
@@ -532,6 +547,11 @@ class Sessions:
                 raw = event.get("raw_text", event.get("text", ""))
                 match = re.search(r"```compade-plan\s*(\{.*?\})\s*```", raw, re.S)
                 decision_match = re.search(r"```compade-decision\s*(\{.*?\})\s*```", raw, re.S)
+                qs = chief.parse_questions(raw)
+                if qs:
+                    chat.questions = qs
+                    self._save(chat)
+                    self._emit("cc_questions", chat, questions=qs)
                 if match:
                     try:
                         plan = chief.validate_plan(chief.extract_json(match.group(1)), roles, key)

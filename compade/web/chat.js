@@ -1,7 +1,7 @@
 /* Compade chief conversation module. */
 (function () {
   'use strict';
-  const memory = { chatId: null, messages: [], plan: null, tasks: {}, state: 'idle', phase: '', ready: false, usage: null, estTokens: null, direct: false, busy: false, auto: false, seen: new Set(), cwd: '', approval: '', disconnected: false, demo: false, toolQuestion: null, selectedTool: null, cc: false, ccTools: [], ccThinking: '', ccLive: '', ccMode: 'default', ccUsage: null, ccLimit: '', ccTasks: [], ccQuestion: '' };
+  const memory = { chatId: null, messages: [], plan: null, tasks: {}, state: 'idle', phase: '', ready: false, usage: null, estTokens: null, direct: false, busy: false, auto: false, seen: new Set(), cwd: '', approval: '', disconnected: false, demo: false, toolQuestion: null, selectedTool: null, cc: false, ccTools: [], ccThinking: '', ccLive: '', ccMode: 'default', ccUsage: null, ccLimit: '', ccTasks: [], ccQuestion: '', ccQuestions: null, ccAnswers: {} };
   let host = null, ctx = null, els = null;
   const esc = (s) => ctx && ctx.esc ? ctx.esc(String(s == null ? '' : s)) : String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   function toText(v) {
@@ -79,6 +79,7 @@
       }
       memory.ccTasks.forEach(t => { const row = document.createElement('div'); row.className = 'cc-task cc-task-' + esc(t.status); row.innerHTML = '<strong>' + esc(t.role || t.task || 'Görev') + '</strong> <span>' + esc(({ done: 'Tamam', blocked: 'Takıldı', failed: 'Başarısız', needs_input: 'Bilgi istiyor', continued: 'Atlandı' })[t.status] || t.status || '') + '</span> ' + format(t.summary || '') + (t.needs ? '<small> · Gerekli: ' + esc(t.needs) + '</small>' : ''); els.feed.appendChild(row); });
       if (memory.ccQuestion) { const q = document.createElement('section'); q.className = 'cc-question'; q.innerHTML = '<strong>Şef soruyor</strong><p>' + format(memory.ccQuestion) + '</p><textarea aria-label="Yanıtınız" rows="2"></textarea><button type="button" data-action="answer">Yanıtla</button>'; els.feed.appendChild(q); }
+      if (memory.ccQuestions && memory.ccQuestions.length && !memory.busy) els.feed.appendChild(questionsCard());
       if (memory.ccLimit) { const n = document.createElement('div'); n.className = 'cc-limit'; n.setAttribute('role', 'alert'); n.textContent = memory.ccLimit; els.feed.appendChild(n); }
       if (memory.plan) els.feed.appendChild(planCard());
       if (memory.ccPlanInvalid) { const n = document.createElement('div'); n.className = 'cc-limit'; n.setAttribute('role', 'alert'); n.textContent = 'Plan geçersiz: ' + memory.ccPlanInvalid; els.feed.appendChild(n); }
@@ -142,7 +143,7 @@
     if (memory.stopped) { const mark = document.createElement('div'); mark.className = 'chat-stopped'; mark.setAttribute('role', 'status'); mark.textContent = 'Durduruldu'; els.feed.appendChild(mark); }
     els.direct.checked = memory.direct;
     const usage = memory.usage;
-    if (usage?.manager_real || memory.ccUsage?.usage) { const u = usage.manager_real || memory.ccUsage.usage; const n = v => (Number(v || 0) / 1000).toFixed(1) + 'k'; const input = u.in ?? u.input_tokens, output = u.out ?? u.output_tokens, cache = u.cache_read ?? u.cache_read_input_tokens; const cost = u.cost_usd ?? memory.ccUsage?.cost_usd; els.tokens.hidden = !(input || output || cache || cost); els.tokens.textContent = `Şef: ${n(input)} giriş · ${n(output)} çıkış · önbellek ${n(cache)}${cost ? ' · $' + Number(cost).toFixed(2) : ''}`; }
+    if (usage?.manager_real || memory.ccUsage?.usage) { const u = usage?.manager_real || memory.ccUsage.usage; const n = v => (Number(v || 0) / 1000).toFixed(1) + 'k'; const input = u.in ?? u.input_tokens, output = u.out ?? u.output_tokens, cache = u.cache_read ?? u.cache_read_input_tokens; const cost = u.cost_usd ?? memory.ccUsage?.cost_usd; els.tokens.hidden = !(input || output || cache || cost); els.tokens.textContent = `Şef: ${n(input)} giriş · ${n(output)} çıkış · önbellek ${n(cache)}${cost ? ' · $' + Number(cost).toFixed(2) : ''}`; }
     else if (usage) { const manager = (usage.manager_in || 0) + (usage.manager_out || 0), worker = (usage.worker_in || 0) + (usage.worker_out || 0), total = memory.estTokens == null ? (manager + worker) / 3.6 : memory.estTokens; els.tokens.hidden = !(total || manager || worker); els.tokens.textContent = `Tahmini token: ~${(total / 1000).toFixed(1)}k · Yönetici ~${(manager / 3.6 / 1000).toFixed(1)}k / İşçi ~${(worker / 3.6 / 1000).toFixed(1)}k`; } else els.tokens.hidden = true;
     const jump = host.querySelector('.chat-jump-bottom');
     if (jump) jump.hidden = nearBottom;
@@ -166,10 +167,44 @@
     });
     list.querySelectorAll('[data-delete-chat]').forEach(b=>b.onclick=async()=>{if(!confirm('Bu sohbet silinsin mi?'))return;await ctx.api.chatDelete(b.dataset.deleteChat);if(memory.chatId===b.dataset.deleteChat)newChat();await ctx.refresh();renderHistory();});
   }
-  async function selectChat(id) { memory.chatId=id; memory.queue=[]; memory.messages=[];memory.changes=null;memory.diffOpen={};memory.chgSel=null; memory.plan=null;memory.tasks={};memory.ccTools=[];memory.ccTasks=[];memory.ccLive='';memory.ccThinking='';memory.toolQuestion=null;memory.selectedTool=null;memory.state='idle';await sync(); }
-  function newChat() { memory.chatId=null;memory.queue=[];memory.messages=[];memory.changes=null;memory.diffOpen={};memory.chgSel=null;memory.plan=null;memory.tasks={};memory.phase='';memory.ready=false;memory.state='idle';memory.busy=false;memory.cc=false;memory.toolQuestion=null;memory.selectedTool=null;memory.ccTools=[];memory.ccTasks=[];memory.ccLive='';memory.ccThinking='';memory.ccQuestion='';memory.ccLimit='';render();els.input.focus(); }
+  async function selectChat(id) { memory.chatId=id; memory.queue=[]; memory.ccQuestions=null; memory.ccAnswers={}; memory.messages=[];memory.changes=null;memory.diffOpen={};memory.chgSel=null; memory.plan=null;memory.tasks={};memory.ccTools=[];memory.ccTasks=[];memory.ccLive='';memory.ccThinking='';memory.toolQuestion=null;memory.selectedTool=null;memory.state='idle';await sync(); }
+  function newChat() { memory.chatId=null;memory.queue=[];memory.ccQuestions=null;memory.ccAnswers={};memory.messages=[];memory.changes=null;memory.diffOpen={};memory.chgSel=null;memory.plan=null;memory.tasks={};memory.phase='';memory.ready=false;memory.state='idle';memory.busy=false;memory.cc=false;memory.toolQuestion=null;memory.selectedTool=null;memory.ccTools=[];memory.ccTasks=[];memory.ccLive='';memory.ccThinking='';memory.ccQuestion='';memory.ccLimit='';render();els.input.focus(); }
   function addStatus(text) { const n = document.createElement('div'); n.className = 'chat-status'; n.setAttribute('role', 'status'); n.textContent = text; els.feed.appendChild(n); }
   function shortPath(p) { p = String(p || 'Klasör seçilmedi'); return p.length > 58 ? '…' + p.slice(-55) : p; }
+  function questionsCard() {
+    const qs = memory.ccQuestions, ans = memory.ccAnswers;
+    const card = document.createElement('section'); card.className = 'cc-questions'; card.setAttribute('aria-label', 'Şefin soruları');
+    const answered = () => qs.some((q, i) => (ans[i]?.sel || []).length || (ans[i]?.text || '').trim());
+    card.innerHTML = '<div class="ccq-head"><strong>Şef soruyor</strong><span>' + qs.length + ' soru · seç ya da kendin yaz</span></div>'
+      + qs.map((q, i) => '<div class="ccq-item" data-q="' + i + '"><p class="ccq-text"><b>' + (qs.length > 1 ? (i + 1) + '. ' : '') + '</b>' + format(q.question) + '</p>'
+        + (q.options.length ? '<div class="ccq-opts" role="group" aria-label="Seçenekler">' + q.options.map((o, j) => '<button type="button" class="ccq-opt" data-opt="' + j + '" aria-pressed="' + ((ans[i]?.sel || []).includes(o)) + '">' + esc(o) + '</button>').join('') + '</div>' : '')
+        + '<input class="ccq-own" type="text" aria-label="' + esc((i + 1) + '. soruya kendi cevabın') + '" placeholder="' + (q.options.length ? 'Ya da kendi cevabın…' : 'Cevabın…') + '" value="' + esc(ans[i]?.text || '') + '"></div>').join('')
+      + '<div class="ccq-actions"><button type="button" class="btn primary ccq-send">Yanıtla</button><button type="button" class="btn ccq-skip">Sonra</button></div>';
+    const sendBtn = card.querySelector('.ccq-send');
+    const sync = () => { sendBtn.disabled = !answered(); };
+    card.querySelectorAll('.ccq-item').forEach(item => {
+      const i = +item.dataset.q, q = qs[i];
+      const a = () => (ans[i] = ans[i] || { sel: [], text: '' });
+      item.querySelectorAll('.ccq-opt').forEach(b => b.onclick = () => {
+        const o = q.options[+b.dataset.opt], st = a();
+        if (q.multi) st.sel = st.sel.includes(o) ? st.sel.filter(x => x !== o) : [...st.sel, o];
+        else st.sel = st.sel.includes(o) ? [] : [o];
+        item.querySelectorAll('.ccq-opt').forEach(x => x.setAttribute('aria-pressed', String(st.sel.includes(q.options[+x.dataset.opt]))));
+        sync();
+      });
+      const own = item.querySelector('.ccq-own');
+      own.oninput = () => { a().text = own.value; sync(); };
+      own.onkeydown = ev => { if (ev.key === 'Enter' && !ev.shiftKey && answered()) { ev.preventDefault(); sendBtn.click(); } };
+    });
+    sendBtn.onclick = () => {
+      const lines = qs.map((q, i) => { const st = ans[i] || {}; const parts = [...(st.sel || []), (st.text || '').trim()].filter(Boolean); return (qs.length > 1 ? (i + 1) + ') ' : '') + q.question + '\n→ ' + (parts.length ? parts.join(', ') : '(cevapsız)'); });
+      memory.ccQuestions = null; memory.ccAnswers = {};
+      els.input.value = lines.join('\n\n'); resizeInput(); send();
+    };
+    card.querySelector('.ccq-skip').onclick = () => { memory.ccQuestions = null; memory.ccAnswers = {}; render(); els.input.focus(); };
+    sync();
+    return card;
+  }
   function planCard() {
     const p = memory.plan, card = document.createElement('section'); card.className = 'chat-plan card';
     const tasks = p.tasks || [], completed = tasks.filter(t => ['ok', 'error', 'skipped', 'cancelled', 'limit', 'timeout', 'suspicious'].includes((memory.tasks[t.id] || {}).status)).length;
@@ -240,13 +275,13 @@
     if (memory.ccQuestion && memory.chatId) { memory.ccQuestion = ''; memory.messages.push({ who: 'user', text: message }); els.input.value = ''; resizeInput(); render(); try { await ctx.api.chatMessage(memory.chatId, message, memory.cwd, [], false); } catch (e) { notify(e); } return; }
     if (memory.busy || ['planning', 'discussing', 'running'].includes(memory.state)) { (memory.queue = memory.queue || []).push(message); els.input.value = ''; resizeInput(); renderQueue(); notify('Sıraya alındı; şef boşalınca gönderilecek'); return; }
     memory.cwd = els.cwdEdit.value.trim() || memory.cwd || (ctx.getCwd ? ctx.getCwd() : '');
-    const priorChat = memory.chatId; memory.messages.push({ who: 'user', text: message }); memory.state = memory.direct ? 'planning' : 'discussing'; memory.busy = true; els.input.value = ''; resizeInput(); render();
+    const priorChat = memory.chatId; memory.ccQuestions = null; memory.ccAnswers = {}; memory.messages.push({ who: 'user', text: message }); memory.state = memory.direct ? 'planning' : 'discussing'; memory.busy = true; els.input.value = ''; resizeInput(); render();
     try { if (memory.ccMode !== 'default' && ctx.api.chatMode) await ctx.api.chatMode(priorChat, memory.ccMode); const res = ctx.api.chatMessage ? await ctx.api.chatMessage(priorChat, message, memory.cwd, [], memory.direct) : await ctx.api.chatSend({ chat: priorChat, text: message, message, cwd: memory.cwd, files: [], direct: memory.direct }); if (res && res.chat) memory.chatId = res.chat; }
     catch (e) { memory.messages.pop(); memory.state = 'idle'; memory.busy = false; notify(e); render(); }
   }
   async function sync() {
     if (!memory.chatId || !ctx.api.chatGet) return;
-    try { const d = await ctx.api.chatGet(memory.chatId); const c = d.chat || d; memory.state = c.state || 'idle'; memory.phase = c.phase || memory.phase; memory.cc = !!(c.cc_session_id || c.phase === 'cc' || c.phase === 'claude' || c.runtime === 'claude'); if (memory.cc) memory.toolQuestion = null; memory.ccMode = c.cc_mode || c.mode || memory.ccMode; memory.ccUsage = c.cc_result || memory.ccUsage; memory.ready = !!c.ready; memory.usage = c.usage || memory.usage; memory.estTokens = c.est_tokens ?? memory.estTokens; memory.plan = c.plan || memory.plan; memory.tasks = c.tasks || memory.tasks; memory.ccTools = c.tools || c.tool_summaries || (c.messages || []).filter(m=>m.who==='araç').map(m=>({name:m.name,input:m.input,ok:m.ok,status:'done'})); memory.messages = (c.messages || []).filter(m=>m.who!=='araç').map(m => ({ who: /kullanıcı|user/i.test(m.who) ? 'user' : 'chief', text: m.text, tools: m.tools })); memory.busy = ['planning', 'discussing', 'running', 'awaiting', 'awaiting_user'].includes(memory.state); memory.disconnected = false; memory.changes = (c.changes || []).length ? { files: c.changes, applied: c.applied || [], branch: c.workspace?.branch || '' } : null; render(); }
+    try { const d = await ctx.api.chatGet(memory.chatId); const c = d.chat || d; memory.state = c.state || 'idle'; memory.phase = c.phase || memory.phase; memory.cc = !!(c.cc_session_id || c.phase === 'cc' || c.phase === 'claude' || c.runtime === 'claude'); if (memory.cc) memory.toolQuestion = null; memory.ccMode = c.cc_mode || c.mode || memory.ccMode; memory.ccUsage = c.cc_result || memory.ccUsage; memory.ready = !!c.ready; memory.usage = c.usage || memory.usage; memory.estTokens = c.est_tokens ?? memory.estTokens; memory.plan = c.plan || memory.plan; memory.tasks = c.tasks || memory.tasks; memory.ccTools = c.tools || c.tool_summaries || (c.messages || []).filter(m=>m.who==='araç').map(m=>({name:m.name,input:m.input,ok:m.ok,status:'done'})); memory.messages = (c.messages || []).filter(m=>m.who!=='araç').map(m => ({ who: /kullanıcı|user/i.test(m.who) ? 'user' : 'chief', text: m.text, tools: m.tools })); memory.busy = ['planning', 'discussing', 'running', 'awaiting', 'awaiting_user'].includes(memory.state); memory.disconnected = false; memory.ccQuestions = (c.questions || []).length ? c.questions : null; memory.changes = (c.changes || []).length ? { files: c.changes, applied: c.applied || [], branch: c.workspace?.branch || '' } : null; render(); }
     catch (e) { notify(e); }
   }
   function mount(container, context) {
@@ -411,6 +446,7 @@
       else if (e.kind === 'cc_plan_invalid') { memory.ccPlanInvalid = toText(e.error); }
       else if (e.kind === 'task_report') { const i = memory.ccTasks.findIndex(t => t.task === e.task); const t = { ...e, summary: toText(e.summary) }; if (i < 0) memory.ccTasks.push(t); else memory.ccTasks[i] = t; }
       else if (e.kind === 'ask_user') memory.ccQuestion = toText(e.question);
+      else if (e.kind === 'cc_questions') { memory.ccQuestions = Array.isArray(e.questions) ? e.questions : null; memory.ccAnswers = {}; }
       render(); return;
     }
     if (e.kind === 'ask_tool') { const state = ctx.getState() || {}, roles = Array.isArray(state.roles) ? state.roles : Object.values(state.roles?.roles || state.roles || {}), chief = roles.find(r => r.chief); const models = state.roles?.models || {}; const chiefRuntime = chief && (chief.runtime || models[(chief.models || [])[0]]?.runtime); if (memory.cc || chiefRuntime === 'claude') { memory.toolQuestion = null; return; } if (!memory.toolQuestion && memory.state !== 'awaiting_tool') memory.toolQuestion=e; memory.state='awaiting_tool'; memory.busy=false; }

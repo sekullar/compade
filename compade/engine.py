@@ -50,8 +50,15 @@ def exe_opencode():
 
 
 def exe_claude():
+    """claude'un gerçek exe'si. npm'in claude.CMD kabuğu cmd.exe'den geçer; cmd uzun sistem talimatındaki tırnak ve
+    satır sonlarını bozup argümanları böler ("'medium' is not recognized..."). Kabuğun çağırdığı exe'yi doğrudan kullan."""
     import shutil
-    return shutil.which("claude") or shutil.which("claude.exe")
+    found = shutil.which("claude") or shutil.which("claude.exe")
+    if found and found.lower().endswith((".cmd", ".bat")):
+        real = Path(found).parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
+        if real.is_file():
+            return str(real)
+    return found
 
 
 def clean(text):

@@ -1,0 +1,30 @@
+{
+  "_note": "Compade jeton tablosu. Taslak: Seku tasarım ekibi (Gemini ui-ux + graphic-brand), kontrastlar CEO tarafından hesaplanarak düzeltildi (2026-11-14). accent=düğme zemini (üstüne accent_text), accent_fg=vurgu rengiyle yazı/çizgi.",
+  "fonts": {
+    "ui": ["Segoe UI", "Arial"],
+    "brand": ["Plus Jakarta Sans", "Segoe UI Semibold", "Segoe UI"],
+    "mono": ["Cascadia Mono", "Consolas", "Courier New"],
+    "size": {"brand": 13, "title": 11, "section": 10, "body": 9, "small": 8, "mono": 10}
+  },
+  "dark": {
+    "bg": "#121417", "surface": "#1A1D21", "surface_alt": "#242830", "border": "#3B4350",
+    "text": "#F1F5F9", "text_muted": "#94A3B8",
+    "accent": "#0F766E", "accent_hover": "#117F75", "accent_text": "#FFFFFF", "accent_fg": "#2DD4BF",
+    "success": "#22C55E", "warning": "#F59E0B", "danger": "#F87171", "info": "#38BDF8",
+    "editor_bg": "#0F1115", "editor_fg": "#E2E8F0", "editor_selection": "#1E3A5F", "editor_linenum": "#7C8AA0"
+  },
+  "light": {
+    "bg": "#F8FAFC", "surface": "#FFFFFF", "surface_alt": "#EDF2F7", "border": "#CBD5E1",
+    "text": "#0F172A", "text_muted": "#64748B",
+    "accent": "#0F766E", "accent_hover": "#115E59", "accent_text": "#FFFFFF", "accent_fg": "#0F766E",
+    "success": "#15803D", "warning": "#B45309", "danger": "#B91C1C", "info": "#0369A1",
+    "editor_bg": "#FFFFFF", "editor_fg": "#1E293B", "editor_selection": "#BFDBFE", "editor_linenum": "#586779"
+  },
+  "status": {
+    "idle":    {"token": "success",    "symbol": "●", "label": "Boşta"},
+    "running": {"token": "info",       "symbol": "◐", "label": "Çalışıyor"},
+    "limit":   {"token": "warning",    "symbol": "▲", "label": "Limit doldu"},
+    "error":   {"token": "danger",     "symbol": "✖", "label": "Hata"},
+    "offline": {"token": "text_muted", "symbol": "○", "label": "Devre dışı"}
+  }
+}

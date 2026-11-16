@@ -1,0 +1,11 @@
+{
+  "roles": [],
+  "models": {
+    "claude": {"runtime": "claude"},
+    "codex": {"runtime": "codex"},
+    "gemini": {"runtime": "agy"},
+    "glm": {"runtime": "opencode", "id": "opencode/glm-5.3-flash-free"},
+    "deepseek": {"runtime": "opencode", "id": "opencode/deepseek-v4.1-flash-free"},
+    "minimax": {"runtime": "opencode", "id": "opencode/minimax-m3.1-flash-free"}
+  }
+}

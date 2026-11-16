@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+/build/
+/dist/
+*.spec
+.venv/
+venv/
+.playwright-mcp/
+
+# design notes and prototypes contain local paths and session logs; only the logo is public
+/design/*
+!/design/logo.svg

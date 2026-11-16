@@ -1,0 +1,46 @@
+/* Maliyet sayfası. Seri renkleri doğrulanmış kategorik palet (koyu yüzey): ekip = mavi, şef = turuncu. */
+.cost-page{--c-team:#3987e5;--c-chief:#d95926;max-width:1180px;margin:0 auto;padding:24px 28px 40px}
+.cost-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+.cost-head h1{margin:0;font-size:20px;flex:1}
+.cost-range{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.cost-range button{min-height:32px;padding:4px 12px;border:0;border-right:1px solid var(--line2);background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
+.cost-range button:last-child{border-right:0}
+.cost-range button[aria-pressed="true"]{background:var(--panel2,var(--panel));color:var(--text);font-weight:600}
+.cost-link{min-height:32px;padding:4px 10px;border:1px solid var(--line2);border-radius:6px;background:transparent;color:var(--text);font-size:12px;cursor:pointer}
+.cost-link:hover,.cost-range button:hover{color:var(--text);border-color:var(--teal)}
+.cost-range button:focus-visible,.cost-link:focus-visible,.cost-hit:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.cost-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.cost-tile{display:flex;flex-direction:column;gap:3px;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.cost-tile span{color:var(--muted);font-size:12px}
+.cost-tile strong{font-size:24px;line-height:1.2;color:var(--text);font-variant-numeric:tabular-nums}
+.cost-tile small{color:var(--muted);font-size:11px;line-height:1.4}
+.cost-card{margin-bottom:14px;padding:14px 16px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.cost-card h2{margin:0 0 10px;font-size:13px;color:var(--text)}
+.cost-card-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+.cost-card-head h2{margin:0;flex:1}
+.cost-legend{display:flex;gap:14px;color:var(--muted);font-size:12px}
+.cost-legend span{display:inline-flex;align-items:center;gap:6px}
+.cost-sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+.cost-sw.cost-team{background:var(--c-team)}.cost-sw.cost-chief{background:var(--c-chief)}
+.cost-legend .cost-sw{margin-right:0}
+.cost-plot{position:relative}
+.cost-svg{display:block;width:100%;height:auto;max-height:280px}
+.cost-svg path.cost-team{fill:var(--c-team)}.cost-svg path.cost-chief{fill:var(--c-chief)}
+.cost-grid{stroke:var(--line);stroke-width:1}
+.cost-axis{fill:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.cost-hit{fill:transparent;cursor:default}.cost-hit.on{fill:color-mix(in srgb,var(--text) 6%,transparent)}
+.cost-tip{position:absolute;top:0;z-index:5;min-width:130px;padding:8px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--bg);color:var(--muted);font-size:12px;line-height:1.6;pointer-events:none;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+.cost-tip strong{display:block;color:var(--text)}.cost-tip b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.cost-note{margin:8px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
+.cost-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px}
+.cost-scroll{overflow:auto;max-height:420px}
+.cost-table{width:100%;border-collapse:collapse;font-size:12px}
+.cost-table th{position:sticky;top:0;padding:6px 8px;background:var(--panel);color:var(--muted);font-weight:500;text-align:right;border-bottom:1px solid var(--line2);white-space:nowrap}
+.cost-table td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cost-table th:first-child,.cost-table td:first-child{text-align:left}
+.cost-table small{color:var(--muted)}
+.cost-key{max-width:260px;overflow:hidden;text-overflow:ellipsis;font-family:"Cascadia Code",Consolas,monospace;font-size:11.5px}
+.cost-tag{padding:1px 6px;border-radius:4px;background:color-mix(in srgb,var(--c-chief) 20%,transparent);color:var(--text);font:10px system-ui,sans-serif}
+.cost-tier{padding:1px 7px;border-radius:4px;border:1px solid var(--line2);color:var(--text);font-size:11px}
+.cost-empty{padding:40px 16px;text-align:center;color:var(--muted)}.cost-empty strong{display:block;color:var(--text);margin-bottom:6px}
+@media(max-width:640px){.cost-page{padding:16px}.cost-grid2{grid-template-columns:1fr}}

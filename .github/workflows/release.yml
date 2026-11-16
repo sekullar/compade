@@ -1,0 +1,46 @@
+name: Release
+
+# Pushing a tag such as v0.1.1 builds Compade.exe + Compade-Setup-<version>.exe and publishes a GitHub Release.
+# The tag must match __version__ in compade/__init__.py. Sentinel Hub and the in-app updater read this release.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Tag matches version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path compade/__init__.py -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ("v$v" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME does not match __version__ $v" }
+
+      - name: Tests
+        # Windows Credential Manager tests can fail on hosted runners (no logon session); they are run locally before tagging.
+        continue-on-error: true
+        run: python -m unittest discover -s tests
+
+      - name: Tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller==6.22.3
+          choco install nsis -y --no-progress
+
+      - name: Build
+        run: python packaging/build.py
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Compade-Setup-*.exe
+          generate_release_notes: true

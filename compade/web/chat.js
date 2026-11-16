@@ -404,8 +404,8 @@
       else if (e.kind === 'cc_tool') { const i = memory.ccTools.findIndex(t => t.id === e.id); const t = { ...e }; if (i < 0) memory.ccTools.push(t); else memory.ccTools[i] = { ...memory.ccTools[i], ...t }; }
       else if (e.kind === 'cc_tool_result') { const t = memory.ccTools.find(x => x.id === e.id); if (t) Object.assign(t, { ok: e.ok, content: toText(e.content), status: 'done' }); else memory.ccTools.push({ ...e, content: toText(e.content), status: 'done' }); }
       else if (e.kind === 'cc_assistant_done') { const text = toText(e.text || e.msg || memory.ccLive); if (text) memory.messages.push({ who: 'chief', text }); memory.ccLive = ''; memory.ccThinking = ''; }
-      else if (e.kind === 'cc_result') { memory.busy = false; memory.ccUsage = e; const text = toText(e.text ?? e.content); if (text && !memory.messages.some(m => m.who === 'chief' && m.text === text)) memory.messages.push({ who: 'chief', text }); memory.ccLive = ''; memory.ccThinking = ''; }
-      else if (e.kind === 'cc_error') { memory.busy = false; memory.messages.push({ who: 'chief', text: e.error || 'Şef hatası', error: true }); }
+      else if (e.kind === 'cc_result') { memory.busy = false; if (['planning', 'discussing'].includes(memory.state)) memory.state = 'idle'; memory.ccUsage = e; const text = toText(e.text ?? e.content); if (text && !memory.messages.some(m => m.who === 'chief' && m.text === text)) memory.messages.push({ who: 'chief', text }); memory.ccLive = ''; memory.ccThinking = ''; }
+      else if (e.kind === 'cc_error') { memory.busy = false; if (['planning', 'discussing'].includes(memory.state)) memory.state = 'idle'; memory.messages.push({ who: 'chief', text: e.error || 'Şef hatası', error: true }); }
       else if (e.kind === 'cc_limit') memory.ccLimit = toText(e.info) || 'Kullanım sınırına ulaşıldı.';
       else if (e.kind === 'cc_plan') { memory.plan = e.plan; memory.ccPlanInvalid = false; }
       else if (e.kind === 'cc_plan_invalid') { memory.ccPlanInvalid = toText(e.error); }

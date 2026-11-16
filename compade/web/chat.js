@@ -65,18 +65,25 @@
     const nearBottom = els.feed.scrollHeight - els.feed.scrollTop - els.feed.clientHeight <= 80;
     els.feed.innerHTML = '';
     if (memory.cc) {
-      const html = memory.messages.map(m => m.who === 'user' ? '<div class="cc-user"><span aria-hidden="true">&gt;</span> ' + format(toText(m.text)) + '</div>' : m.note ? noteHtml(m) : '<div class="cc-assistant">' + format(toText(m.text)) + '</div>').join('');
-      els.feed.innerHTML = html;
+      const msgHtml = m => m.who === 'user' ? '<div class="cc-user"><span aria-hidden="true">&gt;</span> ' + format(toText(m.text)) + '</div>' : m.note ? noteHtml(m) : '<div class="cc-assistant">' + format(toText(m.text)) + '</div>';
+      const N = memory.messages.length;
+      const posOf = t => Math.min(t.at ?? N, N);
+      const toolsAt = (k, afterLive) => memory.ccTools.filter(t => posOf(t) === k && (k < N || !!t.afterLive === !!afterLive));
+      const addTools = list => {
+        for (let a = 0; a < list.length;) {
+          let end = a + 1;
+          while (end < list.length && list[end].name === list[a].name) end++;
+          const batch = list.slice(a, end);
+          if (batch.length >= 4) { const group = document.createElement('details'); group.className = 'cc-tool-group'; group.innerHTML = '<summary>' + batch.length + ' araç çağrısı · ' + esc(batch[0].name) + '</summary>'; batch.forEach(t => group.appendChild(toolCard(t))); els.feed.appendChild(group); }
+          else batch.forEach(t => els.feed.appendChild(toolCard(t)));
+          a = end;
+        }
+      };
+      for (let k = 0; k < N; k++) { addTools(toolsAt(k, false)); els.feed.insertAdjacentHTML('beforeend', msgHtml(memory.messages[k])); }
+      addTools(toolsAt(N, false));
       if (memory.ccThinking) { const d = document.createElement('details'); d.className = 'cc-thinking'; d.open = false; d.innerHTML = '<summary>Düşünüyor…</summary><div>' + format(memory.ccThinking) + (memory.busy ? '<span class="cc-cursor" aria-hidden="true"></span>' : '') + '</div>'; els.feed.appendChild(d); }
       if (memory.ccLive) { const live = document.createElement('div'); live.className = 'cc-assistant'; live.innerHTML = format(memory.ccLive) + (memory.busy ? '<span class="cc-cursor" aria-hidden="true"></span>' : ''); live.setAttribute('aria-live', 'polite'); els.feed.appendChild(live); }
-      for (let i = 0; i < memory.ccTools.length;) {
-        let end = i + 1;
-        while (end < memory.ccTools.length && memory.ccTools[end].name === memory.ccTools[i].name) end++;
-        const batch = memory.ccTools.slice(i, end);
-        if (batch.length >= 4) { const group = document.createElement('details'); group.className = 'cc-tool-group'; group.innerHTML = '<summary>' + batch.length + ' araç çağrısı · ' + esc(batch[0].name) + '</summary>'; batch.forEach(t => group.appendChild(toolCard(t))); els.feed.appendChild(group); }
-        else batch.forEach(t => els.feed.appendChild(toolCard(t)));
-        i = end;
-      }
+      addTools(toolsAt(N, true));
       memory.ccTasks.forEach(t => { const row = document.createElement('div'); row.className = 'cc-task cc-task-' + esc(t.status); row.innerHTML = '<strong>' + esc(t.role || t.task || 'Görev') + '</strong> <span>' + esc(({ done: 'Tamam', blocked: 'Takıldı', failed: 'Başarısız', needs_input: 'Bilgi istiyor', continued: 'Atlandı' })[t.status] || t.status || '') + '</span> ' + format(t.summary || '') + (t.needs ? '<small> · Gerekli: ' + esc(t.needs) + '</small>' : ''); els.feed.appendChild(row); });
       if (memory.ccQuestion) { const q = document.createElement('section'); q.className = 'cc-question'; q.innerHTML = '<strong>Şef soruyor</strong><p>' + format(memory.ccQuestion) + '</p><textarea aria-label="Yanıtınız" rows="2"></textarea><button type="button" data-action="answer">Yanıtla</button>'; els.feed.appendChild(q); }
       if (memory.ccQuestions && memory.ccQuestions.length && !memory.busy) els.feed.appendChild(questionsCard());
@@ -281,7 +288,7 @@
   }
   async function sync() {
     if (!memory.chatId || !ctx.api.chatGet) return;
-    try { const d = await ctx.api.chatGet(memory.chatId); const c = d.chat || d; memory.state = c.state || 'idle'; memory.phase = c.phase || memory.phase; memory.cc = !!(c.cc_session_id || c.phase === 'cc' || c.phase === 'claude' || c.runtime === 'claude'); if (memory.cc) memory.toolQuestion = null; memory.ccMode = c.cc_mode || c.mode || memory.ccMode; memory.ccUsage = c.cc_result || memory.ccUsage; memory.ready = !!c.ready; memory.usage = c.usage || memory.usage; memory.estTokens = c.est_tokens ?? memory.estTokens; memory.plan = c.plan || memory.plan; memory.tasks = c.tasks || memory.tasks; memory.ccTools = c.tools || c.tool_summaries || (c.messages || []).filter(m=>m.who==='araç').map(m=>({name:m.name,input:m.input,ok:m.ok,status:'done'})); memory.messages = (c.messages || []).filter(m=>m.who!=='araç').map(m => ({ who: /kullanıcı|user/i.test(m.who) ? 'user' : 'chief', text: m.text, tools: m.tools })); memory.busy = ['planning', 'discussing', 'running', 'awaiting', 'awaiting_user'].includes(memory.state); memory.disconnected = false; memory.ccQuestions = (c.questions || []).length ? c.questions : null; memory.changes = (c.changes || []).length ? { files: c.changes, applied: c.applied || [], branch: c.workspace?.branch || '' } : null; render(); }
+    try { const d = await ctx.api.chatGet(memory.chatId); const c = d.chat || d; memory.state = c.state || 'idle'; memory.phase = c.phase || memory.phase; memory.cc = !!(c.cc_session_id || c.phase === 'cc' || c.phase === 'claude' || c.runtime === 'claude'); if (memory.cc) memory.toolQuestion = null; memory.ccMode = c.cc_mode || c.mode || memory.ccMode; memory.ccUsage = c.cc_result || memory.ccUsage; memory.ready = !!c.ready; memory.usage = c.usage || memory.usage; memory.estTokens = c.est_tokens ?? memory.estTokens; memory.plan = c.plan || memory.plan; memory.tasks = c.tasks || memory.tasks; { let n = 0; const tl = []; (c.messages || []).forEach(m => { if (m.who === 'araç') tl.push({ name: m.name, input: m.input, ok: m.ok, status: 'done', at: n }); else n++; }); memory.ccTools = c.tools || c.tool_summaries || tl; } memory.messages = (c.messages || []).filter(m=>m.who!=='araç').map(m => ({ who: /kullanıcı|user/i.test(m.who) ? 'user' : 'chief', text: m.text, tools: m.tools })); memory.busy = ['planning', 'discussing', 'running'].includes(memory.state); memory.disconnected = false; memory.ccQuestions = (c.questions || []).length ? c.questions : null; memory.changes = (c.changes || []).length ? { files: c.changes, applied: c.applied || [], branch: c.workspace?.branch || '' } : null; render(); }
     catch (e) { notify(e); }
   }
   function mount(container, context) {
@@ -419,7 +426,7 @@
     q.querySelectorAll('[data-unqueue]').forEach(b => b.onclick = () => { memory.queue.splice(+b.dataset.unqueue, 1); renderQueue(); });
   }
   function drainQueue() {
-    if (!els || !memory.queue?.length || memory.busy || ['planning', 'discussing', 'running', 'awaiting', 'awaiting_user'].includes(memory.state) || memory.ccQuestion) return;
+    if (!els || !memory.queue?.length || memory.busy || ['planning', 'discussing', 'running'].includes(memory.state) || memory.ccQuestion) return;
     const next = memory.queue.shift(); renderQueue();
     els.input.value = next; resizeInput(); send();
   }
@@ -433,12 +440,12 @@
     if (NOTE_KINDS.includes(e.kind)) { noteEvent(e); render(); return; }
     if (e.kind.startsWith('cc_') || ['task_report', 'ask_user'].includes(e.kind)) {
       memory.cc = true;
-      if (e.kind === 'cc_start') { memory.ccSessionId = e.session_id; memory.busy = true; memory.ccLive = ''; memory.ccThinking = ''; }
+      if (e.kind === 'cc_start') { memory.ccSessionId = e.session_id; memory.curTools = []; memory.busy = true; memory.ccLive = ''; memory.ccThinking = ''; }
       else if (e.kind === 'cc_text') { const delta=toText(e.delta);memory.ccLive += delta;memory.busy = true;let live=els.feed.querySelector('.cc-live-delta');if(!live){live=document.createElement('div');live.className='cc-assistant cc-live-delta';els.feed.appendChild(live);}live.appendChild(document.createTextNode(delta));if(els.feed.scrollHeight-els.feed.scrollTop-els.feed.clientHeight<=80)els.feed.scrollTop=els.feed.scrollHeight;return; }
       else if (e.kind === 'cc_thinking') { const delta=toText(e.delta);memory.ccThinking += delta;memory.busy=true;let thinking=els.feed.querySelector('.cc-thinking>div');if(!thinking){const d=document.createElement('details');d.className='cc-thinking';d.innerHTML='<summary>Düşünüyor…</summary><div></div>';els.feed.appendChild(d);thinking=d.querySelector('div');}thinking.appendChild(document.createTextNode(delta));return; }
-      else if (e.kind === 'cc_tool') { const i = memory.ccTools.findIndex(t => t.id === e.id); const t = { ...e }; if (i < 0) memory.ccTools.push(t); else memory.ccTools[i] = { ...memory.ccTools[i], ...t }; }
+      else if (e.kind === 'cc_tool') { const i = memory.ccTools.findIndex(t => t.id === e.id); const t = { ...e }; if (i < 0) { t.at = memory.messages.length; t.afterLive = !!memory.ccLive; memory.ccTools.push(t); (memory.curTools = memory.curTools || []).push(t); } else memory.ccTools[i] = { ...memory.ccTools[i], ...t, at: memory.ccTools[i].at, afterLive: memory.ccTools[i].afterLive }; }
       else if (e.kind === 'cc_tool_result') { const t = memory.ccTools.find(x => x.id === e.id); if (t) Object.assign(t, { ok: e.ok, content: toText(e.content), status: 'done' }); else memory.ccTools.push({ ...e, content: toText(e.content), status: 'done' }); }
-      else if (e.kind === 'cc_assistant_done') { const text = toText(e.text || e.msg || memory.ccLive); if (text) memory.messages.push({ who: 'chief', text }); memory.ccLive = ''; memory.ccThinking = ''; }
+      else if (e.kind === 'cc_assistant_done') { const text = toText(e.text ?? memory.ccLive); if (text) memory.messages.push({ who: 'chief', text }); (memory.curTools || []).forEach(t => { t.at = memory.messages.length; t.afterLive = false; }); memory.curTools = []; memory.ccLive = ''; memory.ccThinking = ''; }
       else if (e.kind === 'cc_result') { memory.busy = false; if (['planning', 'discussing'].includes(memory.state)) memory.state = 'idle'; memory.ccUsage = e; const text = toText(e.text ?? e.content); if (text && !memory.messages.some(m => m.who === 'chief' && m.text === text)) memory.messages.push({ who: 'chief', text }); memory.ccLive = ''; memory.ccThinking = ''; }
       else if (e.kind === 'cc_error') { memory.busy = false; if (['planning', 'discussing'].includes(memory.state)) memory.state = 'idle'; memory.messages.push({ who: 'chief', text: e.error || 'Şef hatası', error: true }); }
       else if (e.kind === 'cc_limit') memory.ccLimit = toText(e.info) || 'Kullanım sınırına ulaşıldı.';

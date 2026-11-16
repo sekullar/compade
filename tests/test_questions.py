@@ -98,6 +98,21 @@ class TestSessionQuestions(unittest.TestCase):
             self.h.s.message(cid, "1) ahmetefekorkmaz.dev")
             self.assertIsNone(chat.questions)
 
+    def test_state_is_idle_before_result_event_reaches_ui(self):
+        seen = {}
+        orig = self.h.on_event
+
+        def spy(kind, d):
+            if kind == "cc_result":
+                seen["state"] = self.h.s.get(d["chat"]).state
+            orig(kind, d)
+        self.h.s.on_event = spy
+        FakeTurn.script = [{"type": "cc_start", "session_id": "s3"}, {"type": "cc_result", "ok": True, "text": "x", "usage": {}}]
+        with patch.object(session, "CCTurn", FakeTurn):
+            self.h.s.message(None, "merhaba")
+            self.wait("cc_result")
+        self.assertEqual(seen["state"], "idle")
+
     def test_askuserquestion_tool_fallback(self):
         FakeTurn.script = [{"type": "cc_start", "session_id": "s2"},
                            {"type": "cc_tool", "id": "t", "name": "AskUserQuestion",

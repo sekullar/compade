@@ -528,6 +528,9 @@ class Sessions:
                 for message in reversed(chat.messages):
                     if message.get("who") == "araç" and message.get("ok") is None:
                         message["ok"] = bool(event.get("ok")); break
+            if sink is None and kind in ("cc_result", "cc_error"):
+                # durum, olay arayüze ulaşmadan önce güncel olsun (arayüz hemen yenilerse "meşgul" görmesin)
+                chat.state = "awaiting" if kind == "cc_result" and chat.plan and chat.plan.get("tasks") else "idle"
             self.on_event(kind, event)
             if sink is not None:
                 if kind == "cc_assistant_done":

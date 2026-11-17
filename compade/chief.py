@@ -2,6 +2,8 @@
 import json
 import re
 
+from . import workspace
+
 MAX_TASKS = 12
 
 CHIEF_SYSTEM = """# Compade — Şef görevi
@@ -19,6 +21,7 @@ Kendin kod yazma, dosya değiştirme; yalnız planla.
 - Bağımsız işleri paralel bırak; yalnız gerçekten başka görevin çıktısına muhtaç olanlara `depends_on` ver.
 - `write`: görev dosya değiştirecekse true, yalnız okuyup rapor yazacaksa false. Gereksiz yere true yapma.
 - `difficulty`: easy (yazım, doküman, küçük tek dosya düzeltmesi, okuma/özet) | medium (tek özellik, sıradan hata) | hard (çok dosya, mimari, güvenlik, zor hata). Model seçimi buna göre yapılır; dürüst ver.
+- `verify` (isteğe bağlı, yalnız write=true görevde): işin doğru olduğunu gösteren derleme/test komutu, ör. `npm run build`, `npm test`, `python -m unittest`. Alt rol sınırlı bir kum havuzunda çalışır ve derleme/tarayıcı çalıştıramayabilir; Compade bu komutu iş bitince KENDİ çalıştırır. Komut başka bir alt klasördeyse `verify_dir` ver (proje köküne göre).
 - En çok {max_tasks} görev. Basit iş için tek görev yeterlidir; rol sayısını şişirme.
 - Kullanıcının isteği belirsizse ve plan çıkaramıyorsan `tasks` boş bırak, `question` alanında tek soru sor.
 
@@ -28,7 +31,7 @@ Kendin kod yazma, dosya değiştirme; yalnız planla.
   "summary": "planın tek cümlelik özeti",
   "question": "",
   "tasks": [
-    {{"id": "t1", "role": "rol-anahtarı", "instruction": "...", "write": false, "depends_on": [], "difficulty": "easy|medium|hard"}}
+    {{"id": "t1", "role": "rol-anahtarı", "instruction": "...", "write": false, "depends_on": [], "difficulty": "easy|medium|hard", "verify": "npm run build", "verify_dir": ""}}
   ]
 }}
 ```
@@ -171,6 +174,12 @@ def validate_plan(plan, roles, chief):
                 "depends_on": [str(d) for d in dep]}
         if str(t.get("difficulty") or "").lower() in ("easy", "medium", "hard"):
             item["difficulty"] = str(t["difficulty"]).lower()
+        vcmd = str(t.get("verify") or "").strip()
+        if vcmd and item["write"] and workspace.safe_verify(vcmd):
+            item["verify"] = vcmd
+            vdir = str(t.get("verify_dir") or "").strip().replace("\\", "/")
+            if vdir and not re.match(r"^[A-Za-z]:|^/|(^|/)\.\.(/|$)", vdir) and len(vdir) <= 120:
+                item["verify_dir"] = vdir.strip("/")
         clean.append(item)
     for t in clean:
         for d in t["depends_on"]:

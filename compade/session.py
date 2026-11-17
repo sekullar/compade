@@ -477,7 +477,9 @@ class Sessions:
         compact = "; ".join(f"{k}: {r.get('name', k)} ({r.get('brief', '')[:100]})" for k, r in roles.items() if k != key)
         return (f"Compade şefisin ({roles[key].get('name', key)}). Kullanıcıyla Türkçe konuş. Roller: {compact}. "
                 "ÖNEMLİ DAVRANIŞ: Kullanıcıyla sürekli sohbet halindesin. İlk mesajda ASLA hemen plan çıkarma: işi nasıl anladığını söyle, gerekirse 1-3 kısa soru sor, yaklaşım öner, kullanıcının fikrini al. Gerektiğinde projeyi salt okunur araçlarla incele. Plan bloğunu YALNIZ kullanıcı açıkça isterse ('planla', 'başlat', 'ekibe ver', 'tamam yap' gibi) ya da konuşmayla her şey netleştikten sonra 'Plan çıkarayım mı?' diye sorup onay alırsan ver. Plan istenince: yanıtın SONUNA tek ```compade-plan JSON bloğu ekle. Şema: "
-                '{"summary":"...","question":"","tasks":[{"id":"t1","role":"rol-anahtarı","instruction":"...","write":false,"depends_on":[],"difficulty":"easy|medium|hard"}]} . '
+                '{"summary":"...","question":"","tasks":[{"id":"t1","role":"rol-anahtarı","instruction":"...","write":false,"depends_on":[],"difficulty":"easy|medium|hard","verify":"npm run build","verify_dir":""}]} . '
+                "verify (yalnız write=true görevde, isteğe bağlı): işin doğruluğunu gösteren derleme/test komutu (npm run build, npm test, python -m unittest...). "
+                "Alt roller kısıtlı kum havuzunda çalışır, derleme/tarayıcı çalıştıramayabilir; Compade bu komutu iş bitince KENDİ çalıştırır. Komut alt klasördeyse verify_dir ver. "
                 "difficulty dürüst olsun: model seçimi ona göre yapılır (kolay iş ucuz modele, zor iş güçlü modele). "
                 "Dosya düzenleme ve alt rol işlerini kendin yapma; yalnız planla. "
                 "SORU SORMA: kullanıcıdan cevap beklediğin her soruyu (netleştirme, seçim, onay) AskUserQuestion aracıyla DEĞİL, "
@@ -706,23 +708,49 @@ class Sessions:
             return ""
         return cmd or workspace.detect_verify(wd)
 
-    def _integrate(self, chat, ws, ws_lock, tid, wd, report):
+    def _verify_target(self, task, base):
+        """Görevin kendi `verify` komutu (şef yazdı, izin listesinde) ve çalışacağı klasör; yoksa ('', '')."""
+        cmd = str((task or {}).get("verify") or "").strip()
+        cfg_cmd = (self.engine.cfg.get("verify_cmd") or "").strip().lower()
+        if not cmd or not base or cfg_cmd in ("off", "kapalı", "-") or not workspace.safe_verify(cmd):
+            return "", ""
+        root = Path(base).resolve()
+        d = root
+        sub = str(task.get("verify_dir") or "").strip()
+        if sub:
+            d = (root / sub).resolve()
+            try:
+                d.relative_to(root)
+            except ValueError:
+                return "", ""
+        return (cmd, str(d)) if d.is_dir() else ("", "")
+
+    def _run_verify(self, chat, tid, cmd, vdir):
+        verify = getattr(self.engine, "verify", None)
+        if not (cmd and verify):
+            return None
+        self._emit("verify_start", chat, task=tid, cmd=cmd)
+        try:
+            res, tail = verify(cmd, vdir, int(self.engine.cfg.get("verify_timeout", 300)))
+        except Exception as exc:  # noqa
+            res, tail = "fail", str(exc)
+        chat.tasks[tid]["verify"] = res
+        self._emit("verify_result", chat, task=tid, ok=res == "pass", cmd=cmd, tail=(tail or "")[-1500:])
+        return res, tail
+
+    def _integrate(self, chat, ws, ws_lock, tid, wd, report, task=None):
         """Başarılı yazma görevi: commit → doğrulama → birleştirme. Rapor (gerekirse 'failed') döner."""
         files = []
         if ws:
             with ws_lock:
                 files = ws.commit(tid, f"compade {tid}: {report.get('summary', '')[:120]}")
             chat.tasks[tid]["files"] = files
-        cmd = self._verify_cmd(wd)
-        verify = getattr(self.engine, "verify", None)
-        if cmd and verify and (files or not ws):
-            self._emit("verify_start", chat, task=tid, cmd=cmd)
-            try:
-                res, tail = verify(cmd, wd, int(self.engine.cfg.get("verify_timeout", 300)))
-            except Exception as exc:  # noqa
-                res, tail = "fail", str(exc)
-            chat.tasks[tid]["verify"] = res
-            self._emit("verify_result", chat, task=tid, ok=res == "pass", cmd=cmd, tail=(tail or "")[-1500:])
+        cmd, vdir = self._verify_target(task, wd)
+        if not cmd:
+            cmd, vdir = self._verify_cmd(wd), wd
+        if cmd and (files or not ws):
+            got = self._run_verify(chat, tid, cmd, vdir)
+            res, tail = got if got else ("pass", "")
             if res != "pass":
                 if ws:
                     with ws_lock:
@@ -806,7 +834,7 @@ class Sessions:
                 report = self._report(status, text)
                 if write and status == "ok" and report["status"] == "done" and not chat.cancelled:
                     try:
-                        report = self._integrate(chat, ws, ws_lock, tid, base, report)
+                        report = self._integrate(chat, ws, ws_lock, tid, base, report, t)
                     except Exception as e:  # noqa
                         report = {"status": "failed", "summary": f"Entegrasyon hatası: {e}", "files": [], "needs": ""}
                     if report["status"] != "done":
@@ -814,6 +842,13 @@ class Sessions:
                 elif ws and write:
                     with ws_lock:
                         ws.drop_task(tid)
+                if write and not chat.cancelled and report["status"] in ("blocked", "needs_input") and t.get("verify"):
+                    # işçi kum havuzunda doğrulayamadı: Compade kendi yetkisiyle çalıştırıp sonucu şefe iletir
+                    vcmd, vdir = self._verify_target(t, base)
+                    got = self._run_verify(chat, tid, vcmd, vdir) if vcmd else None
+                    if got:
+                        note = f"[Compade doğrulaması] `{vcmd}` → {'GEÇTİ' if got[0] == 'pass' else 'KALDI'}" + (f"\n{got[1][-400:]}" if got[0] != "pass" else "")
+                        report = {**report, "summary": (report.get("summary", "") + "\n\n" + note)[:1500]}
                 if report["status"] == "done" or chat.cancelled or not chat.plan:
                     break
                 self._publish_report(chat, tid, role_key, report)
@@ -896,6 +931,8 @@ class Sessions:
             report = self._report(status, text)
         if status == "continued":
             report = {**report, "status": "continued"}
+        elif status in ("skipped", "cancelled"):
+            report = {**report, "status": status}    # çalışmadı: "başarısız" değil
         chat.tasks[tid].update(status=status, run=run_id)
         self._publish_report(chat, tid, t["role"], report)
         with lock:

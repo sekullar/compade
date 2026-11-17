@@ -67,6 +67,20 @@ def detect_verify(root):
     return ""
 
 
+# Şefin plana yazabileceği doğrulama komutları: yalnız derleme/test/söz dizimi; kabuk işareti (; & | > < ` $) yok
+_VERIFY_OK = re.compile(
+    r"^(npm (run [\w:.-]+|test|ci)|pnpm (run [\w:.-]+|test)|yarn (run [\w:.-]+|test)|"
+    r"npx (--no-install )?(vite build|vitest( run)?|tsc( --noEmit)?|jest|eslint [\w./-]+)|"
+    r"node --check [\w./-]+|python -m (unittest|pytest)( [\w./ -]*)?|pytest( [\w./ -]*)?|"
+    r"cargo (test|build|check)|go (test|build|vet) [\w./]+|dotnet (test|build))( --?[\w-]+)*$")
+
+
+def safe_verify(cmd):
+    """Plan alanından gelen doğrulama komutu izin listesinde mi? (Compade bunu kendi yetkisiyle çalıştırır.)"""
+    cmd = str(cmd or "").strip()
+    return bool(cmd) and len(cmd) <= 120 and bool(_VERIFY_OK.match(cmd))
+
+
 def _read(p):
     try:
         return p.read_text(encoding="utf-8", errors="replace")

@@ -80,6 +80,7 @@ class Sessions:
         self.engine = engine
         self.on_event = on_event
         self.chats = {}
+        self._blocked = {}            # etiket -> işçinin bildirdiği erişim/izin engelleri
         self._lock = threading.Lock()
         self._load()
 
@@ -216,6 +217,8 @@ class Sessions:
         _, results = self.engine.run(task_text, jobs, cwd=cwd, write=write, name=label,
                                      on_event=self.on_event, run_dir=run_dir)
         res = results[0] if results else {"status": "error", "tag": jobs[0]["tag"]}
+        if res.get("blocked_actions"):
+            self._blocked[label] = res["blocked_actions"]
         out = run_dir / f"out-{res.get('tag', jobs[0]['tag'])}.md"
         text = out.read_text(encoding="utf-8", errors="replace") if out.exists() else ""
         chief_key = rolestore.chief_key(self.engine.roles)
@@ -873,6 +876,10 @@ class Sessions:
                         wd = base  # rol klasörü projede yok: proje köküne dön
                     route = self._route(chat, tid, role_key, {**t, "instruction": instruction}, write)
                     status, text, run_id = self._run_one(chat, label, role_key, instruction + ctx, wd, write, route)
+                    items = self._blocked.pop(label, [])
+                    if items:
+                        chat.tasks[tid]["blocked"] = items
+                        self._emit("task_blocked", chat, task=tid, role=role_key, items=items)
                 except Exception as e:  # noqa
                     status, text, run_id = "error", f"BAŞLATILAMADI: {e}", None
                 report = self._report(status, text)

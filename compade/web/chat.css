@@ -248,3 +248,5 @@
 .chat-report{margin:6px 0 2px;padding:8px 10px;border-left:3px solid var(--line,#444);background:rgba(255,255,255,.03);font-size:13px;line-height:1.45;border-radius:0 6px 6px 0}
 .chat-report-done{border-left-color:#3ecf8e}.chat-report-failed,.chat-report-blocked{border-left-color:#ef5b5b}.chat-report-needs_input{border-left-color:#e0a93a}
 .chat-report strong{margin-right:4px}
+
+.chat-blocked{margin:6px 0 2px;padding:8px 10px;border-left:3px solid #e0a93a;background:rgba(224,169,58,.08);font-size:12.5px;line-height:1.45;border-radius:0 6px 6px 0}.chat-blocked strong{display:block;margin-bottom:2px;color:#e0a93a}.chat-blocked div+div{opacity:.85}

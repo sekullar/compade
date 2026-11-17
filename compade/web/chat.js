@@ -232,6 +232,7 @@
       if (t.depends_on && t.depends_on.length) html += '<div class="chat-deps">Bağımlılık: ' + t.depends_on.map(d => '← ' + esc(d)).join(' ') + '</div>';
       if (st.fallback) html += '<div class="chat-fallback" role="status">' + (window.Logos && Logos.agent(st.fallback.from,16) || '') + '<span>' + esc(st.fallback.from) + ' yerine</span>' + (window.Logos && Logos.agent(st.fallback.to,16) || '') + '<span>' + esc(st.fallback.to) + ' çalıştı</span></div>';
       { const rp = st.report || (memory.ccTasks || []).find(x => x.task === t.id); if (rp && rp.summary && status !== 'waiting' && status !== 'running') html += '<div class="chat-report chat-report-' + esc(rp.status || '') + '"><strong>' + esc(({ done: 'Tamam', blocked: 'Takıldı', failed: 'Başarısız', needs_input: 'Bilgi istiyor', continued: 'Atlandı', skipped: 'Çalışmadı', cancelled: 'İptal edildi' })[rp.status] || '') + '</strong> ' + format(toText(rp.summary)) + (rp.needs ? '<small> · Gerekli: ' + esc(toText(rp.needs)) + '</small>' : '') + '</div>'; }
+      if (st.blocked && st.blocked.length) html += '<div class="chat-blocked" role="note"><strong>İzin / erişim engeli (olası)</strong>' + st.blocked.map(x => '<div>' + esc(toText(x)) + '</div>').join('') + '</div>';
       if (st.run) html += '<button type="button" class="chat-link" data-action="run" data-run="' + esc(st.run) + '">Çıktıyı aç</button>';
       html += '</article>';
     }
@@ -440,7 +441,7 @@
     if (memory.seen.has(key)) return; memory.seen.add(key);
     if (['cc_result', 'cc_error', 'discuss_reply', 'discuss_error', 'chat_done', 'plan_error', 'plan_question'].includes(e.kind)) setTimeout(drainQueue, 400);
     if (NOTE_KINDS.includes(e.kind)) { noteEvent(e); render(); return; }
-    if (e.kind.startsWith('cc_') || ['task_report', 'ask_user'].includes(e.kind)) {
+    if (e.kind.startsWith('cc_') || ['task_report', 'ask_user', 'task_blocked'].includes(e.kind)) {
       memory.cc = true;
       if (e.kind === 'cc_start') { memory.ccSessionId = e.session_id; memory.curTools = []; memory.busy = true; memory.ccLive = ''; memory.ccThinking = ''; }
       else if (e.kind === 'cc_text') { const delta=toText(e.delta);memory.ccLive += delta;memory.busy = true;let live=els.feed.querySelector('.cc-live-delta');if(!live){live=document.createElement('div');live.className='cc-assistant cc-live-delta';els.feed.appendChild(live);}live.appendChild(document.createTextNode(delta));if(els.feed.scrollHeight-els.feed.scrollTop-els.feed.clientHeight<=80)els.feed.scrollTop=els.feed.scrollHeight;return; }
@@ -453,6 +454,7 @@
       else if (e.kind === 'cc_limit') memory.ccLimit = toText(e.info) || 'Kullanım sınırına ulaşıldı.';
       else if (e.kind === 'cc_plan') { memory.plan = e.plan; memory.planAt = memory.messages.length + (memory.ccLive ? 1 : 0); memory.ccPlanInvalid = false; }
       else if (e.kind === 'cc_plan_invalid') { memory.ccPlanInvalid = toText(e.error); }
+      else if (e.kind === 'task_blocked') { memory.tasks[e.task] = { ...(memory.tasks[e.task] || {}), blocked: e.items }; }
       else if (e.kind === 'task_report') { const i = memory.ccTasks.findIndex(t => t.task === e.task); const t = { ...e, summary: toText(e.summary) }; if (i < 0) memory.ccTasks.push(t); else memory.ccTasks[i] = t; }
       else if (e.kind === 'ask_user') memory.ccQuestion = toText(e.question);
       else if (e.kind === 'cc_questions') { memory.ccQuestions = Array.isArray(e.questions) ? e.questions : null; memory.ccAnswers = {}; }

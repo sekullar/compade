@@ -291,6 +291,26 @@ class Engine:
             status = "cancelled"
         return status, out, err, p.returncode
 
+    BLOCK_PATTERN = re.compile(
+        r"(access is denied|eperm\b|permission denied|dubious ownership|requires? (?:approval|permission)|approval required|"
+        r"izin (?:verilmedi|verilmiyor|hatası|gerek)|izni (?:yok|verilmedi)|engelli|engellendi|engelliyor|was blocked|blocked by|not allowed|denied by)", re.I)
+
+    @classmethod
+    def blocked_actions(cls, *texts, limit=3):
+        """İşçi çıktısında erişim/izin engeli bildiren satırlar (en çok `limit`, kısaltılmış, tekrarsız)."""
+        seen, out = set(), []
+        for text in texts:
+            for line in (text or "").splitlines():
+                line = line.strip()
+                if 12 <= len(line) and cls.BLOCK_PATTERN.search(line) and not line.startswith(("sandbox:", "approval:", "```")):
+                    key = re.sub(r"\W+", " ", line.lower())[:80]
+                    if key not in seen:
+                        seen.add(key)
+                        out.append(line[:200])
+                        if len(out) >= limit:
+                            return out
+        return out
+
     def _attempt(self, job, mk, account, ctx, handle):
         """Bir modelle, bir hesapla çalıştır. Dönüş: sonuç sözlüğü (+ "limit": bool)."""
         pf = ctx["run_dir"] / f"prompt-{job['tag']}.md"
@@ -303,6 +323,7 @@ class Engine:
             raise FileNotFoundError(f"{self.roles['models'][mk]['runtime']} bulunamadı")
         status, out, err, code = self._run_process(cmd, env, stdin, ctx["cwd"], ctx["timeout"], handle)
         body = clean(out_file.read_text(encoding="utf-8", errors="replace")) if out_file and out_file.exists() else clean(out)
+        res["blocked_actions"] = self.blocked_actions(body[-6000:], err[-4000:])
         errc = clean(err)
         if not body and errc:
             body, status = errc, ("error" if status == "ok" else status)

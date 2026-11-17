@@ -29,3 +29,20 @@ class TestUsageLoad(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestResume(unittest.TestCase):
+    def test_interrupted_run_becomes_awaiting_and_keeps_finished_tasks(self):
+        h = Harness([])
+        chats = config.HOME / "chats"
+        chats.mkdir(parents=True, exist_ok=True)
+        plan = {"summary": "x", "question": "", "levels": [["a"], ["b"]], "tasks": [
+            {"id": "a", "role": "be", "instruction": "i", "write": False, "depends_on": []},
+            {"id": "b", "role": "be", "instruction": "i", "write": False, "depends_on": ["a"]}]}
+        (chats / "c-resume.json").write_text(json.dumps({
+            "id": "c-resume", "messages": [], "plan": plan, "state": "running",
+            "tasks": {"a": {"status": "ok", "report": {"summary": "bitti"}}, "b": {"status": "running"}}}), encoding="utf-8")
+        chat = session.Sessions(h.eng, h.on_event).get("c-resume")
+        self.assertEqual(chat.state, "awaiting")
+        self.assertEqual((chat.tasks["a"]["status"], chat.tasks["b"]["status"]), ("ok", "waiting"))
+        self.assertTrue(chat.resumed)

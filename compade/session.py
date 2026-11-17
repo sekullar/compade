@@ -97,7 +97,16 @@ class Sessions:
                     if raw.get("workspace"):
                         chat.workspace = workspace.Workspace.from_dict(raw["workspace"], chat.id)
                     if chat.state in ("running", "planning", "discussing"):
-                        chat.state = "done"   # uygulama kapanırken yarım kalan iş
+                        todo = [t for t in ((chat.plan or {}).get("tasks") or [])
+                                if (chat.tasks.get(t["id"]) or {}).get("status") not in ("ok", "continued", "skipped")]
+                        if chat.state == "running" and todo:
+                            for t in todo:
+                                if t["id"] in chat.tasks:
+                                    chat.tasks[t["id"]]["status"] = "waiting"
+                            chat.state = "awaiting"   # yarım kalan plan: onaylanınca kalan görevlerle devam eder
+                            chat.resumed = True
+                        else:
+                            chat.state = "done"   # uygulama kapanırken yarım kalan iş
                     chat.updated = self._chat_time(chat, path.stat().st_mtime)
                     saved = raw.get("usage") or {}
                     chat.usage.update({k: v for k, v in saved.items() if isinstance(v, (int, float))})
@@ -822,6 +831,12 @@ class Sessions:
             tid = t["id"]
             if chat.cancelled:
                 return self._finish_task(chat, tid, "cancelled", "", None, results, t, lock)
+            if getattr(chat, "resumed", False) and chat.tasks[tid]["status"] in ("ok", "continued"):
+                rep = chat.tasks[tid].get("report") or {}
+                outputs[tid] = rep.get("summary", "")
+                with lock:
+                    results.append({"id": tid, "role": t["role"], "status": chat.tasks[tid]["status"], "output": outputs[tid]})
+                return
             failed = [d for d in t["depends_on"] if chat.tasks[d]["status"] not in ("ok", "continued")]
             if failed:
                 return self._finish_task(chat, tid, "skipped", f"Bağımlı görev başarısız: {', '.join(failed)}", None, results, t, lock)
@@ -837,6 +852,7 @@ class Sessions:
             while True:
                 chat.tasks[tid]["status"] = "running"
                 self._emit("task_state", chat, id=tid, status="running")
+                self._save(chat)
                 write, base = False, cwd
                 try:
                     role = self.engine.roles["roles"][role_key]
@@ -961,6 +977,7 @@ class Sessions:
         with lock:
             results.append({"id": tid, "role": t["role"], "status": status, "output": text})
         self._emit("task_state", chat, id=tid, status=status, run=run_id)
+        self._save(chat)
 
     # ---------- değişiklikler (kullanıcı onayı) ----------
     def _ws(self, cid):

@@ -231,22 +231,65 @@ class Engine:
             return []
 
     # ---------- tek çalıştırma ----------
+    # aynı hatayı tekrar tekrar üreten işçiyi (ör. Codex apply_patch döngüsü) zaman aşımını beklemeden durdur
+    STUCK_PATTERN = re.compile(r"apply_patch verification failed|invalid patch")
+    STUCK_LIMIT = 4
+
     def _run_process(self, cmd, env, stdin, cwd, timeout, handle):
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
         p = subprocess.Popen(cmd, cwd=str(cwd), env=env, stdin=subprocess.PIPE if stdin else subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8", errors="replace",
                              creationflags=flags)
         handle.proc = p
+        chunks = {"out": [], "err": []}
+        hits = [0]
+
+        def pump(stream, key):
+            try:
+                for line in iter(stream.readline, ""):
+                    chunks[key].append(line)
+                    if self.STUCK_PATTERN.search(line):
+                        hits[0] += 1
+            except (OSError, ValueError):
+                pass
+
+        def feed():
+            try:
+                p.stdin.write(stdin)
+                p.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+        threads = [threading.Thread(target=pump, args=(p.stdout, "out"), daemon=True),
+                   threading.Thread(target=pump, args=(p.stderr, "err"), daemon=True)]
+        if stdin:
+            threads.append(threading.Thread(target=feed, daemon=True))
+        for t in threads:
+            t.start()
+        deadline, status, note = time.time() + timeout, None, ""
+        while p.poll() is None:
+            if time.time() > deadline:
+                kill_tree(p)
+                status = "timeout"
+                break
+            if hits[0] >= self.STUCK_LIMIT:
+                kill_tree(p)
+                status = "error"
+                note = f"\n[Compade] Aynı hata {hits[0]} kez tekrarlandı (apply_patch reddi); işçi zaman aşımını beklemeden durduruldu. Dosyayı tek yamada tek kez düzenle ya da küçük parçalara böl."
+                break
+            time.sleep(0.4)
         try:
-            out, err = p.communicate(stdin, timeout=timeout)
-            status = "ok" if p.returncode == 0 else "error"
+            p.wait(timeout=10)
         except subprocess.TimeoutExpired:
             kill_tree(p)
-            out, err = p.communicate()
-            status = "timeout"
+        for t in threads:
+            t.join(3)
+        out, err = "".join(chunks["out"]), "".join(chunks["err"]) + note
+        if status is None:
+            status = "ok" if p.returncode == 0 else "error"
         if handle.cancelled:
             status = "cancelled"
-        return status, out or "", err or "", p.returncode
+        return status, out, err, p.returncode
 
     def _attempt(self, job, mk, account, ctx, handle):
         """Bir modelle, bir hesapla çalıştır. Dönüş: sonuç sözlüğü (+ "limit": bool)."""

@@ -209,6 +209,7 @@ class Sessions:
         if route and route.get("model"):
             jobs[0]["model"] = route["model"]
             jobs[0]["effort"] = route.get("effort")
+            jobs[0]["tag"] = re.sub(r"[^A-Za-z0-9._-]+", "-", f"{jobs[0]['role'] or 'genel'}-{route['model']}").strip("-")
         run_dir = self.engine.make_run_dir(f"{label}")
         chat.run_ids.add(run_dir.name)
         (run_dir / "title.txt").write_text(f"{label}: " + task_text.strip().splitlines()[0][:60], encoding="utf-8")
@@ -514,6 +515,7 @@ class Sessions:
                 "Alt roller kısıtlı kum havuzunda çalışır, derleme/tarayıcı çalıştıramayabilir; Compade bu komutu iş bitince KENDİ çalıştırır. Komut alt klasördeyse verify_dir ver. "
                 "difficulty dürüst olsun: model seçimi ona göre yapılır (kolay iş ucuz modele, zor iş güçlü modele). "
                 "Dosya düzenleme ve alt rol işlerini kendin yapma; yalnız planla. "
+                "ÖN KOŞUL: işçi görevlerinde ön koşulları yalnız ASCII anahtarla kontrol ettir (PowerShell Türkçe karakterli aramada yanlış 'yok' verir); tek bir ön koşul başarısızlığı yüzünden işi abort etme, önce kanıtı doğrula. "
                 "SORU SORMA: kullanıcıdan cevap beklediğin her soruyu (netleştirme, seçim, onay) AskUserQuestion aracıyla DEĞİL, "
                 "yanıtının SONUNA tek ```compade-questions JSON bloğuyla sor; arayüz bunu cevaplanabilir soru kartı yapar. Şema: "
                 '[{"question":"...","options":["kısa seçenek","..."],"multi":false}] . '
@@ -847,6 +849,9 @@ class Sessions:
             ctx = "".join(f"\n\n## Önceki görev çıktısı ({d})\n{dependency_context(d)}" for d in t["depends_on"] if d in outputs)
             if notes:
                 ctx += "\n\n## Proje notları (COMPADE.md — uy)\n" + notes
+            ctx += ("\n\n## Windows ipucu\nKomut satırında (PowerShell) Türkçe karakterli metin aratma: karakterler bozulur ve yanlış 'yok' sonucu verir. "
+                    "Arama/ön koşul kontrolünde ASCII anahtar kullan (ör. '--paper', dosya adı, etiket kimliği). "
+                    "Dosyayı yamalarken aynı dosya için tek yamada birden çok işlem yazma.")
             role_key, instruction, label, extra = t["role"], t["instruction"], f"{chat.id[-4:]}-{tid}", ""
             attempt = 0
             while True:

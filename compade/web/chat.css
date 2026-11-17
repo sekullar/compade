@@ -243,3 +243,8 @@
 .cc-questions .ccq-own:focus,.cc-questions .ccq-opt:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
 .cc-questions .ccq-actions{display:flex;gap:8px}
 .cc-questions .ccq-send[disabled]{opacity:.45;cursor:default}
+
+.chat-task-label{margin-left:auto;font-size:12px;opacity:.85}
+.chat-report{margin:6px 0 2px;padding:8px 10px;border-left:3px solid var(--line,#444);background:rgba(255,255,255,.03);font-size:13px;line-height:1.45;border-radius:0 6px 6px 0}
+.chat-report-done{border-left-color:#3ecf8e}.chat-report-failed,.chat-report-blocked{border-left-color:#ef5b5b}.chat-report-needs_input{border-left-color:#e0a93a}
+.chat-report strong{margin-right:4px}

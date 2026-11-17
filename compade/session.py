@@ -23,9 +23,23 @@ PLAN_WORDS = re.compile(r"planla|plan çıkar|başlat|ekibe ver|tamam yap|hadi y
 
 
 class Chat:
+    @property
+    def plan(self):
+        return self._plan
+
+    @plan.setter
+    def plan(self, value):
+        old = getattr(self, "_plan", None)
+        same = bool(old and value and [t.get("id") for t in old.get("tasks", [])] == [t.get("id") for t in value.get("tasks", [])]
+                    and old.get("summary") == value.get("summary"))
+        self._plan = value
+        if value and not same:
+            self.plan_at = sum(1 for m in self.messages if m.get("who") != "araç")
+
     def __init__(self, cid=None):
         self.id = cid or time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
         self.messages = []            # {"who": "kullanıcı"|"şef", "text": str, "ts": float}
+        self.plan_at = None           # plan oluştuğunda sohbetteki ileti sayısı (kart akışta o yerde durur)
         self.plan = None              # son doğrulanmış plan
         self.questions = None         # şefin yanıt bekleyen soruları [{question, options, multi}]
         self.state = "idle"           # idle | planning | awaiting | running | done
@@ -55,7 +69,7 @@ class Chat:
                 "phase": self.phase, "brief": self.brief, "ready": self.ready, "usage": {**self.usage, **self.cc_usage},
                 "cc_session_id": self.cc_session_id, "cc_mode": self.cc_mode, "updated": self.updated, "title": self.title,
                 "workspace": self.workspace.to_dict() if self.workspace else None, "changes": self.changes,
-                "applied": self.applied, "questions": self.questions}
+                "applied": self.applied, "questions": self.questions, "plan_at": self.plan_at}
 
 
 class Sessions:
@@ -74,7 +88,7 @@ class Sessions:
                     raw = json.loads(path.read_text(encoding="utf-8"))
                     chat = Chat(raw.get("id"))
                     for key in ("messages", "plan", "state", "tasks", "phase", "brief", "ready", "cc_session_id", "cc_mode", "updated", "title",
-                                "changes", "applied", "questions"):
+                                "changes", "applied", "questions", "plan_at"):
                         if key in raw:
                             setattr(chat, key, raw[key])
                     if raw.get("workspace"):

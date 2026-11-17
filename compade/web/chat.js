@@ -486,5 +486,5 @@
     setTimeout(() => { handleEvent({ kind: 'task_state', chat: 'demo-chat', id: 't1', status: 'ok', run: 'demo-run-1' }); handleEvent({ kind: 'task_state', chat: 'demo-chat', id: 't2', status: 'running' }); }, 2100);
     setTimeout(() => { handleEvent({ kind: 'task_state', chat: 'demo-chat', id: 't2', status: 'ok', run: 'demo-run-2' }); handleEvent({ kind: 'chat_summary', chat: 'demo-chat', text: 'Demo tamamlandı: mobil düzen önerileri hazır.' }); handleEvent({ kind: 'chat_done', chat: 'demo-chat', state: 'done' }); }, 2900);
   }
-  window.ChatUI = { mount, handleEvent, handleDisconnect, unmount, refreshHistory: renderHistory, __demo: demo };
+  window.ChatUI = { mount, handleEvent, handleDisconnect, unmount, refreshHistory: renderHistory, __demo: demo, debugState: () => ({ chatId: memory.chatId, state: memory.state, busy: memory.busy, cc: memory.cc, planAt: memory.planAt, msgs: memory.messages.length, tools: (memory.ccTools || []).length, queue: (memory.queue || []).length, plan: memory.plan ? (memory.plan.tasks || []).length : 0, tasks: Object.fromEntries(Object.entries(memory.tasks || {}).map(([k, v]) => [k, v.status])) }) };
 })();

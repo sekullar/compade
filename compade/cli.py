@@ -114,12 +114,42 @@ def main(argv=None):
                    help="acil durum: ilk değişimden önceki özgün agy girişini geri yükle")
     sub.add_parser("ram")
     sub.add_parser("ledger")
+    d = sub.add_parser("debug", help="geliştirici hata ayıklama günlüğünü oku")
+    d.add_argument("-n", type=int, default=80, help="son kaç satır")
+    d.add_argument("--src", choices=["server", "api", "ui"])
+    d.add_argument("--kind", help="olay türü (regex)")
+    d.add_argument("--chat", help="sohbet kimliği")
+    d.add_argument("-q", dest="contains", help="satırda geçen metin")
+    d.add_argument("-f", "--follow", action="store_true", help="yeni satırları izle")
+    d.add_argument("--json", action="store_true")
+    d.add_argument("--clear", action="store_true", help="günlüğü sil")
     g = sub.add_parser("gui", help="eski Tkinter arayüzü")
     g.add_argument("--selftest", action="store_true", help="pencereyi kurup kapat (kendini sına)")
     wb = sub.add_parser("web", help="web arayüzü (varsayılan)")
     wb.add_argument("--no-window", action="store_true", help="pencere açma, yalnız sunucuyu başlat")
     wb.add_argument("--port", type=int, default=0)
     args = ap.parse_args(argv)
+    if args.cmd == "debug":
+        import json
+        import time as _t
+        from . import debuglog
+        if args.clear:
+            debuglog.clear()
+            print("günlük silindi")
+            return 0
+        flt = dict(src=args.src, kind=args.kind, chat=args.chat, contains=args.contains)
+        show = (lambda r: print(json.dumps(r, ensure_ascii=False))) if args.json else (lambda r: print(debuglog.fmt(r)))
+        rows = debuglog.read(args.n, **flt)
+        for r in rows:
+            show(r)
+        last = rows[-1]["t"] if rows else _t.time()
+        while args.follow:
+            _t.sleep(1)
+            fresh = [r for r in debuglog.read(500, **flt) if r["t"] > last]
+            for r in fresh:
+                show(r)
+                last = r["t"]
+        return 0
     if args.cmd == "gui":
         from .gui.app import run_gui
         return run_gui(selftest=getattr(args, "selftest", False))

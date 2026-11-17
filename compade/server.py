@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import accounts as accounts_mod
-from . import catalog, costs, team, updater
+from . import catalog, costs, debuglog, team, updater
 from . import __version__, agyquota, config, identity, ledger, limits, rolestore, session, sysmon, wincred
 from .engine import Engine, exe_opencode
 
@@ -95,7 +95,30 @@ class App:
             return result
 
     # ---------- API ----------
+    def debug_ui(self, body):
+        """Arayüzün gönderdiği olay/ekran özeti satırlarını günlüğe ekle."""
+        for e in (body.get("entries") or [])[:200]:
+            if isinstance(e, dict):
+                debuglog.log("ui", str(e.get("kind", ""))[:60], e.get("d"), chat=e.get("chat"))
+        return {"ok": True}
+
+    _noisy_last = {}
+
+    def _debug_event(self, kind, d):
+        """Sunucu olayını günlüğe yaz; akış parçaları (cc_text...) saniyede bir örneklenir."""
+        if kind in ("cc_text", "cc_thinking"):
+            key = (kind, d.get("chat"))
+            now = time.time()
+            last, skipped = self._noisy_last.get(key, (0, 0))
+            if now - last < 1.0:
+                self._noisy_last[key] = (last, skipped + 1)
+                return
+            self._noisy_last[key] = (now, 0)
+            d = {**d, "skipped": skipped}
+        debuglog.log("server", kind, d, chat=d.get("chat"))
+
     def on_event(self, kind, d):
+        self._debug_event(kind, d)
         tag = d.get("tag")
         if kind == "start":
             self.hub.running[(d["run"], tag)] = self.engine.roles["models"].get(d["model"], {}).get("runtime")
@@ -478,6 +501,7 @@ def make_handler(app):
             return self._host_ok() and secrets.compare_digest(tok, app.token)
 
         def _send(self, code, body, ctype="application/json; charset=utf-8", extra=None):
+            self._status = code
             data = body if isinstance(body, bytes) else json.dumps(body, ensure_ascii=False).encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", ctype)
@@ -522,8 +546,23 @@ def make_handler(app):
         def _api(self, method, path, qs):
             if not self._auth(qs):
                 return self._send(403, {"error": "yetkisiz"})
+            t0 = time.time()
+            try:
+                return self._api_inner(method, path, qs)
+            finally:
+                if path not in ("/api/events", "/api/debug", "/api/state"):
+                    debuglog.log("api", f"{method} {path}", {"status": getattr(self, "_status", None), "ms": int((time.time() - t0) * 1000),
+                                                             "q": {k: v[0] for k, v in qs.items() if k != "token" and v}},
+                                 chat=(qs.get("id") or [None])[0])
+
+        def _api_inner(self, method, path, qs):
             try:
                 if method == "GET":
+                    if path == "/api/debug":
+                        n = max(1, min(5000, int((qs.get("n") or ["200"])[0] or 200)))
+                        rows = debuglog.read(n, src=(qs.get("src") or [None])[0], kind=(qs.get("kind") or [None])[0],
+                                             chat=(qs.get("chat") or [None])[0], contains=(qs.get("q") or [None])[0])
+                        return self._send(200, {"rows": rows})
                     if path == "/api/state":
                         return self._send(200, app.state())
                     if path == "/api/runs":
@@ -567,6 +606,7 @@ def make_handler(app):
                     routes["/api/chat/discard"] = lambda b: app.sessions.discard(b.get("chat"))
                     routes["/api/chat/rename"] = lambda b: app.sessions.rename(b.get("chat"), b.get("title"))
                     routes["/api/update/install"] = lambda b: updater.install()
+                    routes["/api/debug"] = app.debug_ui
                     if path in routes:
                         return self._send(200, routes[path](body))
                     if path == "/api/cancel":
@@ -577,8 +617,11 @@ def make_handler(app):
                         return self._send(200, {"ok": True})
                 self._send(404, {"error": "bilinmeyen uç"})
             except (ValueError, OSError, KeyError) as e:
+                debuglog.log("api", "error 400", {"path": path, "error": str(e)})
                 self._send(400, {"error": str(e)})
             except Exception as e:  # noqa
+                import traceback
+                debuglog.log("api", "error 500", {"path": path, "error": f"{type(e).__name__}: {e}", "tb": traceback.format_exc()[-1200:]})
                 self._send(500, {"error": f"{type(e).__name__}: {e}"})
 
         def _sse(self):

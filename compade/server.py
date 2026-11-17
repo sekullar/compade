@@ -99,7 +99,8 @@ class App:
         """Arayüzün gönderdiği olay/ekran özeti satırlarını günlüğe ekle."""
         for e in (body.get("entries") or [])[:200]:
             if isinstance(e, dict):
-                debuglog.log("ui", str(e.get("kind", ""))[:60], e.get("d"), chat=e.get("chat"))
+                debuglog.log("ui", str(e.get("kind", ""))[:60], e.get("d"), chat=e.get("chat"),
+                         t=(e.get("ct") / 1000.0 if isinstance(e.get("ct"), (int, float)) and abs(e["ct"] / 1000.0 - time.time()) < 3600 else None))
         return {"ok": True}
 
     _noisy_last = {}

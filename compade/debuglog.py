@@ -71,7 +71,7 @@ def _rotate(path):
         pass
 
 
-def log(source, kind, data=None, chat=None):
+def log(source, kind, data=None, chat=None, t=None):
     """Bir satır yaz. Hiçbir koşulda çağıranı bozmaz."""
     global _seq
     if not enabled():
@@ -79,7 +79,7 @@ def log(source, kind, data=None, chat=None):
     try:
         with _lock:
             _seq += 1
-            row = {"n": _seq, "t": round(time.time(), 3), "src": source, "kind": kind}
+            row = {"n": _seq, "t": round(t if t else time.time(), 3), "src": source, "kind": kind}
             if chat:
                 row["chat"] = chat
             if data:

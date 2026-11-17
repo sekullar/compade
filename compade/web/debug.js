@@ -9,7 +9,7 @@
     const entries = buf; buf = [];
     try { fetch('/api/debug', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', 'X-Compade-Token': tok }, body: JSON.stringify({ entries }) }).catch(() => {}); } catch (_) {}
   }
-  function log(kind, d, chat) { buf.push({ kind, d, chat }); if (buf.length >= 50) flush(); else if (!timer) timer = setTimeout(flush, 400); }
+  function log(kind, d, chat) { buf.push({ kind, d, chat, ct: Date.now() }); if (buf.length >= 50) flush(); else if (!timer) timer = setTimeout(flush, 400); }
   function short(s, n = 60) { s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n) + '…' : s; }
 
   // ekranda GÖRÜNEN durum: sohbet kartları ve ekip çubuğu (sunucu/olay durumuyla karşılaştırmak için)

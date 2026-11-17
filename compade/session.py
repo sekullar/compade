@@ -36,6 +36,9 @@ class Chat:
         if value and not same:
             self.plan_at = sum(1 for m in self.messages if m.get("who") != "araç")
 
+    def tasks_started(self):
+        return any((t or {}).get("status") not in (None, "waiting") for t in self.tasks.values())
+
     def __init__(self, cid=None):
         self.id = cid or time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
         self.messages = []            # {"who": "kullanıcı"|"şef", "text": str, "ts": float}
@@ -96,7 +99,13 @@ class Sessions:
                     if chat.state in ("running", "planning", "discussing"):
                         chat.state = "done"   # uygulama kapanırken yarım kalan iş
                     chat.updated = self._chat_time(chat, path.stat().st_mtime)
-                    chat.usage.update(raw.get("usage") or {})
+                    saved = raw.get("usage") or {}
+                    chat.usage.update({k: v for k, v in saved.items() if isinstance(v, (int, float))})
+                    if isinstance(saved.get("manager_real"), dict):
+                        chat.cc_usage["manager_real"].update({k: v for k, v in saved["manager_real"].items() if isinstance(v, (int, float))})
+                    plan_tasks = (chat.plan or {}).get("tasks") or []
+                    if plan_tasks and chat.state == "idle" and all((chat.tasks.get(t["id"]) or {}).get("status", "waiting") == "waiting" for t in plan_tasks):
+                        chat.state = "awaiting"   # onay bekleyen plan, hata yüzünden boşa düşmüş olabilir
                     self.chats[chat.id] = chat
                 except (OSError, ValueError, TypeError):
                     continue
@@ -208,7 +217,7 @@ class Sessions:
         return res.get("status", "error"), text, run_dir.name
 
     def _usage(self, chat):
-        self._emit("usage", chat, usage=dict(chat.usage), est_tokens=int(sum(chat.usage.values()) / 3.6))
+        self._emit("usage", chat, usage=dict(chat.usage), est_tokens=int(sum(v for v in chat.usage.values() if isinstance(v, (int, float))) / 3.6))
 
     # ---------- 1) planlama ----------
     def message(self, cid, text, cwd=None, files=(), approval="", direct=False):
@@ -530,7 +539,7 @@ class Sessions:
                                    "cost_usd": float(event.get("cost_usd") or 0), "effort": effort})
                 except Exception:  # noqa
                     pass
-                self._emit("usage", chat, usage={**chat.usage, **chat.cc_usage}, est_tokens=int(sum(chat.usage.values()) / 3.6))
+                self._emit("usage", chat, usage={**chat.usage, **chat.cc_usage}, est_tokens=int(sum(v for v in chat.usage.values() if isinstance(v, (int, float))) / 3.6))
             events.append((kind, dict(event)))
             if kind == "cc_tool" and event.get("name") == "AskUserQuestion":
                 qs = chief.questions_from_tool(event.get("input"))
@@ -546,7 +555,7 @@ class Sessions:
                         message["ok"] = bool(event.get("ok")); break
             if sink is None and kind in ("cc_result", "cc_error"):
                 # durum, olay arayüze ulaşmadan önce güncel olsun (arayüz hemen yenilerse "meşgul" görmesin)
-                chat.state = "awaiting" if kind == "cc_result" and chat.plan and chat.plan.get("tasks") else "idle"
+                chat.state = "awaiting" if kind == "cc_result" and chat.plan and chat.plan.get("tasks") and not chat.tasks_started() else "idle"
             self.on_event(kind, event)
             if sink is not None:
                 if kind == "cc_assistant_done":
@@ -602,7 +611,7 @@ class Sessions:
                 chat.state = "awaiting" if chat.plan and chat.plan.get("tasks") else "idle"
                 self._save(chat)
             elif kind == "cc_error":
-                chat.state = "idle"
+                chat.state = "awaiting" if chat.plan and chat.plan.get("tasks") and not chat.tasks_started() else "idle"
                 self._save(chat)
         if sink is None:
             chat.state = "planning"
